@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Checkout</title><link rel="stylesheet" href="/css/styles.css"><script src="https://checkout.razorpay.com/v1/checkout.js"></script></head>
+<body><a class="skip-link" href="#checkout-form">Skip to checkout form</a>
+<header class="site"><div class="container header-in"><a class="logo" href="/"><span class="business-name">Your Business</span> <span>Store</span></a><nav><a href="/">Continue shopping</a></nav></div></header>
+<main class="container">
+  <h1>Checkout</h1><div id="msg" aria-live="polite"></div>
+  <section aria-labelledby="summary-heading"><h2 id="summary-heading">Order summary</h2><div id="summary"></div></section>
+  <form id="checkout-form" class="form" novalidate>
+    <label>Full name<input name="name" autocomplete="name" required minlength="2"></label>
+    <label>Email<input name="email" type="email" autocomplete="email" required></label>
+    <label>Phone (WhatsApp preferred)<input name="phone" type="tel" autocomplete="tel" required></label>
+    <button class="btn" id="pay-btn" type="submit">Pay securely</button>
+    <p class="muted">Payments are processed by Razorpay (UPI, cards, netbanking). We never see or store your card/UPI credentials. Payment is confirmed only after server-side verification — not by screenshot.</p>
+  </form>
+</main>
+<footer><div class="container"><a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a><a href="/refund.html">Refunds</a></div></footer>
+<script src="/js/cart.js"></script>
+<script>
+const inr=n=>"₹"+Number(n).toLocaleString("en-IN"); let products=[],config={};
+async function init(){
+  const [c,p]=await Promise.all([fetch("/api/config").then(r=>r.json()),fetch("/api/products").then(r=>r.json())]); config=c; products=p;
+  document.querySelectorAll(".business-name").forEach(e=>e.textContent=config.businessName);
+  const cart=Cart.get(), box=document.getElementById("summary");
+  if(!cart.length){box.innerHTML='<div class="alert error">Your cart is empty. <a href="/">Browse products</a></div>';document.getElementById("pay-btn").disabled=true;return;}
+  let total=0; box.innerHTML=cart.map(l=>{const pr=products.find(x=>x.id===l.id); if(!pr||!(pr.price>0))return ""; total+=pr.price*l.qty; return `<p>${pr.name} × ${l.qty} — <strong>${inr(pr.price*l.qty)}</strong></p>`}).join("")+`<p>Total: <strong>${inr(total)}</strong></p>`;
+  if(config.mockMode) document.getElementById("msg").innerHTML='<div class="alert info">Test / Mock Mode: Razorpay keys are not configured, so “Pay” will simulate a payment locally. No real money moves. See README &gt; Test Mode.</div>';
+}
+document.getElementById("checkout-form").addEventListener("submit", async (e)=>{
+  e.preventDefault(); const btn=document.getElementById("pay-btn"), msg=document.getElementById("msg"); btn.disabled=true; btn.textContent="Creating order…"; msg.innerHTML="";
+  const fd=new FormData(e.target); const payload={name:fd.get("name"),email:fd.get("email"),phone:fd.get("phone"),items:Cart.get()};
+  try{
+    const res=await fetch("/api/orders",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    const data=await res.json(); if(!res.ok) throw new Error(data.error||"Could not create order.");
+    if(data.mockMode){ // LOCAL TEST ONLY
+      await fetch("/api/payments/mock-success",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({orderId:data.orderId})});
+      Cart.clear(); location.href="/confirmation.html?order="+encodeURIComponent(data.orderId); return;
+    }
+    const rzp=new Razorpay({key:config.razorpayKeyId,amount:data.amount*100,currency:"INR",name:config.businessName,order_id:data.razorpayOrderId,prefill:{name:payload.name,email:payload.email,contact:payload.phone},
+      handler: async (resp)=>{ // Send proof to server — server verifies signature before marking paid
+        const v=await fetch("/api/payments/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({orderId:data.orderId,...resp})});
+        if(!v.ok){const j=await v.json(); msg.innerHTML=`<div class="alert error">${j.error}</div>`; btn.disabled=false; btn.textContent="Pay securely"; return;}
+        Cart.clear(); location.href="/confirmation.html?order="+encodeURIComponent(data.orderId);
+      },
+      modal:{ondismiss:()=>{btn.disabled=false;btn.textContent="Pay securely"; msg.innerHTML='<div class="alert info">Payment window closed. Your order is still pending — you can try again.</div>';}}});
+    rzp.open(); btn.textContent="Complete payment in Razorpay window…";
+  }catch(err){ msg.innerHTML=`<div class="alert error" role="alert">${err.message}</div>`; btn.disabled=false; btn.textContent="Pay securely"; }
+});
+init();
+</script></body></html>

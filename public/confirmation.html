@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Order confirmation</title><link rel="stylesheet" href="/css/styles.css"></head>
+<body><header class="site"><div class="container header-in"><a class="logo" href="/">Store Home</a></div></header>
+<main class="container" style="padding:32px 20px 56px"><h1>Order confirmation</h1><div id="box" aria-live="polite"><p class="muted">Loading your order…</p></div></main>
+<script>
+const inr=n=>"₹"+Number(n).toLocaleString("en-IN");
+const id=new URLSearchParams(location.search).get("order"); const box=document.getElementById("box");
+if(!id) box.innerHTML='<div class="alert error">No order reference found.</div>';
+else (async()=>{
+  try{ const res=await fetch("/api/orders/"+encodeURIComponent(id)); const o=await res.json(); if(!res.ok) throw new Error(o.error);
+    const items=o.items.map(i=>`<li>${i.name} × ${i.qty} — ${inr(i.price*i.qty)}</li>`).join("");
+    if(o.status==="paid"){
+      const text=encodeURIComponent(`Hi! My name is ${o.customerName}. My order reference is ${o.id} and payment is verified. Please help me with delivery / activation. I can optionally attach my payment screenshot here for support.`);
+      box.innerHTML=`<div class="alert success" role="status">Payment verified ✓ Thank you!</div>
+        <p>Order reference: <strong>${o.id}</strong></p><p>Payment status: <strong>Paid</strong></p><p>Total: <strong>${inr(o.total)}</strong></p><ul>${items}</ul>
+        <p><a class="btn whatsapp" target="_blank" rel="noopener" href="https://wa.me/${o.whatsappNumber}?text=${text}">Contact us on WhatsApp</a></p>
+        <p class="muted">You can optionally attach your payment screenshot in WhatsApp for support — it is not required, as your payment is already verified on our server.</p>`;
+    } else {
+      box.innerHTML=`<div class="alert info">Order received — payment status: <strong>${o.status}</strong></div><p>Order reference: <strong>${o.id}</strong></p><p>Total: <strong>${inr(o.total)}</strong></p><ul>${items}</ul><p class="muted">If you completed payment, it may take a moment to verify. Refresh this page. Do not pay again — contact support with your order reference.</p>`;
+    }
+  }catch(e){ box.innerHTML=`<div class="alert error">${e.message||"Could not load order."}</div>`; }
+})();
+</script></body></html>
