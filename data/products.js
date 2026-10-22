@@ -64,7 +64,7 @@ const PRODUCTS = [
     description: "50M tokens | 1 day | Full warranty | In stock - instant delivery",
     price: 499,
     type: "one-time",
-    allowQty: false,
+    allowQty: true,
     active: true
   },
   {
@@ -74,7 +74,7 @@ const PRODUCTS = [
     description: "10M tokens | 1 day | Full warranty | In stock - instant delivery",
     price: 699,
     type: "one-time",
-    allowQty: false,
+    allowQty: true,
     active: true
   },
   {
@@ -84,7 +84,7 @@ const PRODUCTS = [
     description: "100M tokens | 1 day | Full warranty | In stock - instant delivery",
     price: 1699,
     type: "one-time",
-    allowQty: false,
+    allowQty: true,
     active: true
   },
   {
@@ -94,7 +94,7 @@ const PRODUCTS = [
     description: "$100 advertised API credits | 1 month | Full warranty | In stock - instant delivery",
     price: 799,
     type: "one-time",
-    allowQty: false,
+    allowQty: true,
     active: true
   },
   {
@@ -104,7 +104,7 @@ const PRODUCTS = [
     description: "$500 advertised API credits | 1 month | Full warranty | In stock - instant delivery",
     price: 1999,
     type: "one-time",
-    allowQty: false,
+    allowQty: true,
     active: true
   },
   P("api-test","API Test","Development & Coding"),
