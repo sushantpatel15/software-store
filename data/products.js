@@ -26,7 +26,7 @@
 const P = (id, name, category, description) => ({
   id, name, category,
   description: description || `${name} — contact us for available plan, duration, and warranty (FW/NW) options.`,
-  price: 0, type: "subscription", allowQty: false, active: true,
+  price: 0, type: "subscription", allowQty: true, active: true,
 });
 
 const PRODUCTS = [
