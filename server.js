@@ -23,7 +23,7 @@ const PORT = process.env.PORT || 3000;
 
 // --- Config (single place for business settings) ---
 const CONFIG = {
-  businessName: process.env.BUSINESS_NAME || "Your Business Name",
+  businessName: process.env.BUSINESS_NAME || "Software Store",
   supportEmail: process.env.SUPPORT_EMAIL || "support@example.com",
   whatsappNumber: (process.env.WHATSAPP_NUMBER || "919999999999").replace(/\D/g, ""),
 };
