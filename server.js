@@ -100,7 +100,9 @@ app.get("/api/config", (_req, res) => {
   res.json({
     businessName: CONFIG.businessName,
     supportEmail: CONFIG.supportEmail,
-    whatsappNumber: CONFIG.whatsappNumber,
+    // Only a valid, non-placeholder number is exposed; otherwise null (frontend shows a helpful error)
+    whatsappNumber: getWhatsappNumber(),
+    whatsappReady: Boolean(getWhatsappNumber()),
     razorpayKeyId: hasRazorpayKeys ? process.env.RAZORPAY_KEY_ID : null,
     mockMode: !hasRazorpayKeys,
   });
@@ -108,6 +110,130 @@ app.get("/api/config", (_req, res) => {
 
 app.get("/api/products", (_req, res) => {
   res.json(PRODUCTS.filter((p) => p.active !== false));
+});
+
+// ---------- WhatsApp order enquiry (NO payment, NO database, NO Razorpay) ----------
+// The customer's cart is checked against the SERVER catalog, a WhatsApp message is
+// built here, and the browser opens it via https://wa.me/. Nothing is stored or logged.
+const ENQUIRY_MAX_ITEMS = 20;
+const ENQUIRY_MAX_QTY = 10;
+const PLACEHOLDER_WHATSAPP = "919999999999"; // value from .env.example = "not configured yet"
+const WARRANTY_LABELS = { FW: "Full Warranty (FW)", NW: "Non-Warranty (NW)", NONE: "No preference" };
+
+/** Returns the WhatsApp number (digits only, E.164 length) or null if missing/invalid/placeholder. */
+function getWhatsappNumber() {
+  const n = (process.env.WHATSAPP_NUMBER || "").replace(/\D/g, "");
+  if (!/^[1-9]\d{9,14}$/.test(n) || n === PLACEHOLDER_WHATSAPP) return null;
+  return n;
+}
+const inrText = (n) => "₹" + Number(n).toLocaleString("en-IN");
+const phoneDigits = (v) => String(v || "").replace(/\D/g, "").length;
+const isPhoneStrict = (v) => isPhone(v) && phoneDigits(v) >= 10 && phoneDigits(v) <= 15;
+
+/** Trim, drop control characters, cap length. Single-line fields also collapse whitespace. */
+function cleanText(v, max, multiline = false) {
+  if (v === undefined || v === null || typeof v === "object") return "";
+  let s = String(v).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
+  s = multiline ? s.replace(/\r\n?/g, "\n").replace(/\n{3,}/g, "\n\n") : s.replace(/\s+/g, " ");
+  return s.trim().slice(0, max);
+}
+
+/** Strictly validates cart lines against the catalog. Prices come ONLY from data/products.js. */
+function validateEnquiryItems(items) {
+  if (!Array.isArray(items) || items.length === 0) return { error: "Your cart is empty." };
+  if (items.length > ENQUIRY_MAX_ITEMS) return { error: `Please send at most ${ENQUIRY_MAX_ITEMS} different products per enquiry.` };
+  const lines = [], seen = new Set();
+  for (const line of items) {
+    if (!line || typeof line !== "object" || typeof line.id !== "string" || !/^[a-z0-9][a-z0-9-]{0,79}$/.test(line.id))
+      return { error: "One of the cart items is invalid. Please refresh the page and review your cart." };
+    const product = PRODUCTS.find((p) => p.id === line.id);
+    if (!product) return { error: "A product in your cart no longer exists. Please refresh the page and review your cart." };
+    if (product.active === false) return { error: `"${product.name}" is not available right now. Please remove it from your cart.` };
+    if (seen.has(product.id)) return { error: "Your cart has the same product more than once. Please refresh and try again." };
+    seen.add(product.id);
+    if (!Number.isInteger(line.qty) || line.qty < 1 || line.qty > ENQUIRY_MAX_QTY)
+      return { error: `Quantity for "${product.name}" must be a whole number from 1 to ${ENQUIRY_MAX_QTY}.` };
+    if (!product.allowQty && line.qty !== 1)
+      return { error: `"${product.name}" can only be ordered with quantity 1.` };
+    const price = Number(product.price) > 0 ? Number(product.price) : null; // null = price on request
+    lines.push({ name: product.name, qty: line.qty, price });
+  }
+  return { lines };
+}
+
+/** Builds the WhatsApp message text (plain text; WhatsApp renders *bold*). */
+function buildEnquiryMessage({ reference, customer, lines, details }) {
+  const hasUnknown = lines.some((l) => l.price === null);
+  const out = [];
+  out.push(`*New order enquiry — ${CONFIG.businessName}*`, `Reference: ${reference}`, "");
+  out.push("*Customer*", `Name: ${customer.name}`, `Email: ${customer.email}`, `Phone: ${customer.phone}`, "");
+  out.push("*Items*");
+  lines.forEach((l, i) => {
+    const price = l.price === null
+      ? "Price on request"
+      : `${inrText(l.price)} each = ${inrText(l.price * l.qty)}`;
+    out.push(`${i + 1}. ${l.name} × ${l.qty} — ${price}`);
+  });
+  if (hasUnknown) {
+    out.push("", "Total: Final quotation required (one or more items are Price on request).");
+  } else {
+    const subtotal = lines.reduce((sum, l) => sum + l.price * l.qty, 0);
+    out.push("", `Subtotal: ${inrText(subtotal)}`);
+  }
+  const req = [];
+  if (details.plan) req.push(`Plan: ${details.plan}`);
+  if (details.duration) req.push(`Duration: ${details.duration}`);
+  if (details.warranty) req.push(`Warranty preference: ${WARRANTY_LABELS[details.warranty]}`);
+  if (details.notes) req.push(`Notes: ${details.notes}`);
+  if (req.length) out.push("", "*Requirements*", ...req);
+  out.push("", "Please confirm availability, the final quote and the next steps. Payment will be discussed after you confirm. Thank you!");
+  return { message: out.join("\n"), hasUnknown };
+}
+
+// Validate an order enquiry and return a ready-to-open WhatsApp link.
+app.post("/api/enquiries", (req, res) => {
+  const whatsapp = getWhatsappNumber();
+  if (!whatsapp) {
+    return res.status(503).json({ error: `WhatsApp ordering is not available right now. Please email us at ${CONFIG.supportEmail}.` });
+  }
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const customer = {
+    name: cleanText(body.name, 100),
+    email: cleanText(body.email, 254),
+    phone: cleanText(body.phone, 20),
+  };
+  const warrantyRaw = cleanText(body.warranty, 10).toUpperCase();
+  const details = {
+    plan: cleanText(body.plan, 100),
+    duration: cleanText(body.duration, 60),
+    warranty: warrantyRaw,
+    notes: cleanText(body.notes, 500, true),
+  };
+
+  const fields = {};
+  if (customer.name.length < 2) fields.name = "Please enter your full name.";
+  if (!isEmail(customer.email)) fields.email = "Please enter a valid email address.";
+  if (!isPhoneStrict(customer.phone)) fields.phone = "Please enter a valid phone number (10–15 digits, e.g. +91 98765 43210).";
+  if (details.warranty && !WARRANTY_LABELS[details.warranty]) fields.warranty = "Please choose a valid warranty option.";
+  if (Object.keys(fields).length) {
+    return res.status(400).json({ error: "Please correct the highlighted fields.", fields });
+  }
+
+  const checked = validateEnquiryItems(body.items);
+  if (checked.error) return res.status(400).json({ error: checked.error });
+
+  const reference = `ENQ-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+  const { message, hasUnknown } = buildEnquiryMessage({ reference, customer, lines: checked.lines, details });
+  const encoded = encodeURIComponent(message);
+  if (encoded.length > 6000) {
+    return res.status(400).json({ error: "Your enquiry is too long. Please shorten the notes or reduce the number of products." });
+  }
+  res.json({
+    reference,
+    message,
+    quotationRequired: hasUnknown,
+    whatsappUrl: `https://wa.me/${whatsapp}?text=${encoded}`,
+  });
 });
 
 // Create a pending order (+ Razorpay order when configured)
@@ -201,6 +327,12 @@ app.get("/admin/orders", (req, res) => {
     <style>body{font-family:system-ui;padding:24px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px;text-align:left}</style>
     <h1>Orders (latest 100)</h1><p>Local dev view only. Add real authentication before launch.</p>
     <table><tr><th>Order</th><th>Customer</th><th>Total</th><th>Status</th><th>Created</th></tr>${rows || '<tr><td colspan="5">No orders yet.</td></tr>'}</table>`);
+});
+
+// Malformed JSON bodies get a clean JSON error instead of an HTML stack page
+app.use((err, _req, res, next) => {
+  if (err && err.type === "entity.parse.failed") return res.status(400).json({ error: "Invalid request." });
+  next(err);
 });
 
 app.listen(PORT, () => console.log(`✅ Store running at http://localhost:${PORT}  (${hasRazorpayKeys ? "Razorpay: configured" : "Razorpay: MOCK MODE"})`));

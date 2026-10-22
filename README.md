@@ -13,13 +13,27 @@ npm start                # or: npm run dev  (auto-restart)
 ```
 Open http://localhost:3000
 
+## 0. How ordering works now (WhatsApp enquiry — no online payment)
+
+1. Customer adds **any active product** to the cart (including "Price on request" ones).
+2. On **Checkout** they enter name, email, phone and optional plan / duration / warranty (FW/NW) / notes, then press **Send Order on WhatsApp**.
+3. The server (`POST /api/enquiries`) re-checks the cart against `data/products.js` (browser prices are never trusted), builds the message with a reference like `ENQ-20261022-A1B2C3`, and returns a `https://wa.me/<WHATSAPP_NUMBER>?text=…` link.
+4. WhatsApp opens with the message ready. **The customer must press Send in WhatsApp** — nothing is sent automatically. You then quote, take payment and deliver manually.
+5. If any item is "Price on request" the message says "Final quotation required" instead of showing a total.
+
+Nothing is saved to the database and no personal details are logged for enquiries. The Razorpay routes (`/api/orders`, `/api/payments/verify`, webhook) are still in the code for later but the checkout page no longer calls them.
+`WHATSAPP_NUMBER` must be a real number (the `919999999999` placeholder counts as "not configured" and checkout will show an error instead of a broken link).
+
+Run the automated tests with `npm test`.
+
 ## 2. Edit products & prices ★
 
 **Edit only this file: `data/products.js`**
 
 - All 50 products from your list are already there, grouped by category.
-- Prices are `0` right now because no prices were provided. `price: 0` = shows **"Price on request" + WhatsApp enquiry button**.
-- Set a real price (e.g. `price: 1499`) and that product automatically gets a price + **Add to Cart** + checkout.
+- Prices are `0` right now because no prices were provided. `price: 0` = shows **"Price on request"** (can still be added to the cart; you quote it manually).
+- Set a real price (e.g. `price: 1499`) and the product shows that price, and the WhatsApp message includes the line total.
+- `active: false` hides a product and the server rejects it.
 - Add variants (duration / FW / NW) as separate entries with their own `id` and price once you know them.
 - Restart the server after editing.
 

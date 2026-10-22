@@ -7,3 +7,6 @@ node_modules/
 *.sqlite
 .DS_Store
 npm-debug.log*
+*.db-shm
+*.sqlite-shm
+*.sqlite-wal

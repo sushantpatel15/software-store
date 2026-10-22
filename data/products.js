@@ -7,10 +7,11 @@
  *
  *  HOW TO SET A PRICE:
  *    Change `price: 0` to e.g. `price: 1499` (INR, no commas)
- *    - price > 0  -> product shows price + "Add to Cart"
- *    - price = 0  -> product shows "Price on request" + WhatsApp enquiry
- *                      (matches your current flow: customer messages
- *                       for plan / duration / FW / NW price)
+ *    - price > 0  -> product shows its price; price is used in the WhatsApp order message
+ *    - price = 0  -> product shows "Price on request"; it CAN still be added to the cart
+ *                      and the WhatsApp message says "Price on request" /
+ *                      "Final quotation required" (you quote it manually)
+ *    - active: false -> hidden from the store and rejected by the server
  *
  *  Fields:
  *    id, name, description, category,

@@ -1,50 +1,146 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Checkout</title><link rel="stylesheet" href="/css/styles.css"><script src="https://checkout.razorpay.com/v1/checkout.js"></script></head>
+<title>Checkout — Send order on WhatsApp</title><link rel="stylesheet" href="/css/styles.css"></head>
 <body><a class="skip-link" href="#checkout-form">Skip to checkout form</a>
 <header class="site"><div class="container header-in"><a class="logo" href="/"><span class="business-name">Your Business</span> <span>Store</span></a><nav><a href="/">Continue shopping</a></nav></div></header>
 <main class="container">
-  <h1>Checkout</h1><div id="msg" aria-live="polite"></div>
+  <h1>Checkout</h1>
+
+  <!-- No payment happens on this site. Orders are sent as a WhatsApp message and finalised manually. -->
+  <div class="alert info" role="note"><strong>How ordering works:</strong> you send us your order enquiry on WhatsApp. We then confirm availability and the final quote with you, and discuss payment and delivery there. <strong>No payment is taken on this website.</strong></div>
+  <div id="msg" aria-live="polite"></div>
+
   <section aria-labelledby="summary-heading"><h2 id="summary-heading">Order summary</h2><div id="summary"></div></section>
+
   <form id="checkout-form" class="form" novalidate>
-    <label>Full name<input name="name" autocomplete="name" required minlength="2"></label>
-    <label>Email<input name="email" type="email" autocomplete="email" required></label>
-    <label>Phone (WhatsApp preferred)<input name="phone" type="tel" autocomplete="tel" required></label>
-    <button class="btn" id="pay-btn" type="submit">Pay securely</button>
-    <p class="muted">Payments are processed by Razorpay (UPI, cards, netbanking). We never see or store your card/UPI credentials. Payment is confirmed only after server-side verification — not by screenshot.</p>
+    <h2>Your details</h2>
+    <label>Full name *<input name="name" id="f-name" autocomplete="name" required minlength="2" maxlength="100" aria-describedby="err-name"><span class="field-error" id="err-name"></span></label>
+    <label>Email *<input name="email" id="f-email" type="email" autocomplete="email" required maxlength="254" aria-describedby="err-email"><span class="field-error" id="err-email"></span></label>
+    <label>Phone (WhatsApp preferred) *<input name="phone" id="f-phone" type="tel" autocomplete="tel" required maxlength="20" placeholder="+91 98765 43210" aria-describedby="err-phone"><span class="field-error" id="err-phone"></span></label>
+
+    <h2>Order requirements <span class="muted">(optional)</span></h2>
+    <label>Software plan<input name="plan" id="f-plan" maxlength="100" placeholder="e.g. Pro, Team, Individual"></label>
+    <label>Subscription duration<input name="duration" id="f-duration" maxlength="60" placeholder="e.g. 1 month, 12 months"></label>
+    <label>Warranty preference
+      <select name="warranty" id="f-warranty" aria-describedby="err-warranty">
+        <option value="">No preference</option>
+        <option value="FW">Full Warranty (FW)</option>
+        <option value="NW">Non-Warranty (NW)</option>
+      </select><span class="field-error" id="err-warranty"></span></label>
+    <label>Other notes<textarea name="notes" id="f-notes" rows="3" maxlength="500" placeholder="Anything else we should know?"></textarea></label>
+
+    <button class="btn whatsapp" id="send-btn" type="submit">Send Order on WhatsApp</button>
+    <p class="muted">When you press the button, WhatsApp opens with your order message ready. <strong>Your enquiry is only delivered after you press Send in WhatsApp.</strong> We don't store your details on this website.</p>
   </form>
+
+  <!-- Shown after the message has been prepared -->
+  <section id="sent" hidden aria-labelledby="sent-heading">
+    <h2 id="sent-heading">Your WhatsApp message is ready</h2>
+    <p>Reference: <strong id="sent-ref"></strong></p>
+    <div class="alert info" role="status">We have <strong>not</strong> sent anything yet. Tap <strong>Open WhatsApp</strong>, check the message, and press <strong>Send</strong> in WhatsApp. If WhatsApp didn't open, use the button below.</div>
+    <pre class="msg-preview" id="sent-msg"></pre>
+    <div class="actions">
+      <a class="btn whatsapp" id="open-wa" target="_blank" rel="noopener" href="#">Open WhatsApp</a>
+      <button class="btn secondary" type="button" id="edit-btn">Edit my order</button>
+      <button class="btn secondary" type="button" id="clear-btn">Clear cart</button>
+    </div>
+  </section>
 </main>
 <footer><div class="container"><a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a><a href="/refund.html">Refunds</a></div></footer>
 <script src="/js/cart.js"></script>
 <script>
-const inr=n=>"₹"+Number(n).toLocaleString("en-IN"); let products=[],config={};
-async function init(){
-  const [c,p]=await Promise.all([fetch("/api/config").then(r=>r.json()),fetch("/api/products").then(r=>r.json())]); config=c; products=p;
-  document.querySelectorAll(".business-name").forEach(e=>e.textContent=config.businessName);
-  const cart=Cart.get(), box=document.getElementById("summary");
-  if(!cart.length){box.innerHTML='<div class="alert error">Your cart is empty. <a href="/">Browse products</a></div>';document.getElementById("pay-btn").disabled=true;return;}
-  let total=0; box.innerHTML=cart.map(l=>{const pr=products.find(x=>x.id===l.id); if(!pr||!(pr.price>0))return ""; total+=pr.price*l.qty; return `<p>${pr.name} × ${l.qty} — <strong>${inr(pr.price*l.qty)}</strong></p>`}).join("")+`<p>Total: <strong>${inr(total)}</strong></p>`;
-  if(config.mockMode) document.getElementById("msg").innerHTML='<div class="alert info">Test / Mock Mode: Razorpay keys are not configured, so “Pay” will simulate a payment locally. No real money moves. See README &gt; Test Mode.</div>';
+const inr = (n) => "₹" + Number(n).toLocaleString("en-IN");
+const $ = (id) => document.getElementById(id);
+let products = [], config = {}, submitting = false;
+
+// Same rules as the server (the server re-checks everything anyway).
+const isEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+const isPhone = (v) => /^[+\d][\d\s-]{9,14}$/.test(v) && v.replace(/\D/g, "").length >= 10;
+
+async function init() {
+  try {
+    [config, products] = await Promise.all([fetch("/api/config").then((r) => r.json()), fetch("/api/products").then((r) => r.json())]);
+  } catch { $("msg").innerHTML = '<div class="alert error" role="alert">Could not load the store. Please refresh the page.</div>'; $("send-btn").disabled = true; return; }
+  document.querySelectorAll(".business-name").forEach((e) => (e.textContent = config.businessName));
+  const removed = Cart.sync(products);
+  if (removed.length) $("msg").innerHTML = '<div class="alert info">Some items in your cart are no longer available and were removed.</div>';
+  if (!config.whatsappReady) {
+    $("msg").innerHTML += `<div class="alert error" role="alert">WhatsApp ordering isn't set up yet, so we can't open a chat. Please email us at <a href="mailto:${config.supportEmail}">${config.supportEmail}</a>.</div>`;
+  }
+  renderSummary();
 }
-document.getElementById("checkout-form").addEventListener("submit", async (e)=>{
-  e.preventDefault(); const btn=document.getElementById("pay-btn"), msg=document.getElementById("msg"); btn.disabled=true; btn.textContent="Creating order…"; msg.innerHTML="";
-  const fd=new FormData(e.target); const payload={name:fd.get("name"),email:fd.get("email"),phone:fd.get("phone"),items:Cart.get()};
-  try{
-    const res=await fetch("/api/orders",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
-    const data=await res.json(); if(!res.ok) throw new Error(data.error||"Could not create order.");
-    if(data.mockMode){ // LOCAL TEST ONLY
-      await fetch("/api/payments/mock-success",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({orderId:data.orderId})});
-      Cart.clear(); location.href="/confirmation.html?order="+encodeURIComponent(data.orderId); return;
-    }
-    const rzp=new Razorpay({key:config.razorpayKeyId,amount:data.amount*100,currency:"INR",name:config.businessName,order_id:data.razorpayOrderId,prefill:{name:payload.name,email:payload.email,contact:payload.phone},
-      handler: async (resp)=>{ // Send proof to server — server verifies signature before marking paid
-        const v=await fetch("/api/payments/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({orderId:data.orderId,...resp})});
-        if(!v.ok){const j=await v.json(); msg.innerHTML=`<div class="alert error">${j.error}</div>`; btn.disabled=false; btn.textContent="Pay securely"; return;}
-        Cart.clear(); location.href="/confirmation.html?order="+encodeURIComponent(data.orderId);
-      },
-      modal:{ondismiss:()=>{btn.disabled=false;btn.textContent="Pay securely"; msg.innerHTML='<div class="alert info">Payment window closed. Your order is still pending — you can try again.</div>';}}});
-    rzp.open(); btn.textContent="Complete payment in Razorpay window…";
-  }catch(err){ msg.innerHTML=`<div class="alert error" role="alert">${err.message}</div>`; btn.disabled=false; btn.textContent="Pay securely"; }
+
+function renderSummary() {
+  const sum = Cart.summarize(products), box = $("summary");
+  $("send-btn").disabled = submitting || !sum.lines.length || !config.whatsappReady;
+  if (!sum.lines.length) { box.innerHTML = '<div class="alert error">Your cart is empty. <a href="/">Browse products</a></div>'; return; }
+  box.innerHTML = "";
+  sum.lines.forEach(({ product: p, qty, priced, lineTotal }) => {
+    const row = document.createElement("div"); row.className = "cart-line";
+    row.innerHTML = `<span><strong>${p.name}</strong> × ${qty}<br><span class="muted">${priced ? `${inr(p.price)} each · ${inr(lineTotal)}` : "Price on request"}</span></span>
+      <span class="qty">${p.allowQty ? `<button type="button" data-dec="${p.id}" aria-label="Decrease quantity of ${p.name}">−</button><button type="button" data-inc="${p.id}" aria-label="Increase quantity of ${p.name}">+</button>` : ""}
+      <button type="button" class="btn secondary" data-remove="${p.id}" aria-label="Remove ${p.name} from cart">Remove</button></span>`;
+    box.appendChild(row);
+  });
+  const total = document.createElement("div"); total.className = "summary-total";
+  total.innerHTML = sum.hasUnknown
+    ? '<strong>Final quotation required</strong><br><span class="muted">Some items are “Price on request”. We\'ll confirm the total with you on WhatsApp.</span>'
+    : `Total: <strong>${inr(sum.knownTotal)}</strong>`;
+  box.appendChild(total);
+}
+$("summary").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  const line = (id) => Cart.get().find((i) => i.id === id);
+  if (b.dataset.remove) Cart.remove(b.dataset.remove);
+  if (b.dataset.inc && line(b.dataset.inc)) Cart.setQty(b.dataset.inc, line(b.dataset.inc).qty + 1);
+  if (b.dataset.dec && line(b.dataset.dec)) Cart.setQty(b.dataset.dec, line(b.dataset.dec).qty - 1);
 });
+window.addEventListener("cart-changed", renderSummary);
+
+function showErrors(fields) {
+  for (const k of ["name", "email", "phone", "warranty"]) {
+    const el = $("err-" + k), input = $("f-" + k);
+    el.textContent = (fields && fields[k]) || "";
+    if (input) input.setAttribute("aria-invalid", fields && fields[k] ? "true" : "false");
+  }
+  const first = ["name", "email", "phone", "warranty"].find((k) => fields && fields[k]);
+  if (first) $("f-" + first).focus();
+}
+
+$("checkout-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (submitting) return; // blocks accidental double submits
+  $("msg").innerHTML = "";
+  const fd = new FormData(e.target);
+  const val = (k) => String(fd.get(k) || "").trim();
+  const fields = {};
+  if (val("name").length < 2) fields.name = "Please enter your full name.";
+  if (!isEmail(val("email"))) fields.email = "Please enter a valid email address.";
+  if (!isPhone(val("phone"))) fields.phone = "Please enter a valid phone number (10–15 digits, e.g. +91 98765 43210).";
+  showErrors(fields);
+  if (Object.keys(fields).length) return;
+  if (!Cart.get().length) { $("msg").innerHTML = '<div class="alert error" role="alert">Your cart is empty.</div>'; return; }
+
+  submitting = true; $("send-btn").disabled = true; $("send-btn").textContent = "Preparing your message…";
+  try {
+    // Only ids + quantities are sent. Prices are NEVER sent; the server uses its own catalog.
+    const payload = { name: val("name"), email: val("email"), phone: val("phone"), plan: val("plan"), duration: val("duration"),
+      warranty: val("warranty"), notes: val("notes"), items: Cart.get() };
+    const res = await fetch("/api/enquiries", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { showErrors(data.fields); throw new Error(data.error || "Something went wrong. Please try again."); }
+
+    $("sent-ref").textContent = data.reference; $("sent-msg").textContent = data.message; $("open-wa").href = data.whatsappUrl;
+    $("checkout-form").hidden = true; $("sent").hidden = false; $("sent-heading").setAttribute("tabindex", "-1"); $("sent-heading").focus();
+    window.open(data.whatsappUrl, "_blank", "noopener"); // may be blocked by the browser; the button above always works
+  } catch (err) {
+    $("msg").innerHTML = ""; const d = document.createElement("div"); d.className = "alert error"; d.setAttribute("role", "alert");
+    d.textContent = err.message === "Failed to fetch" ? "Network problem. Please check your connection and try again." : err.message; $("msg").appendChild(d);
+  } finally {
+    submitting = false; $("send-btn").textContent = "Send Order on WhatsApp"; renderSummary();
+  }
+});
+$("edit-btn").addEventListener("click", () => { $("sent").hidden = true; $("checkout-form").hidden = false; $("f-name").focus(); });
+$("clear-btn").addEventListener("click", () => { Cart.clear(); location.href = "/"; });
 init();
 </script></body></html>
