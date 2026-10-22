@@ -56,6 +56,57 @@ const PRODUCTS = [
   P("framer-pro","Framer Pro","Design & Creative","Framer Pro — also used for website & app development."),
   P("supercut-pro","Supercut Pro","Design & Creative"),
   // 💻 Development & Coding
+    // Claude API Packages
+  {
+    id: "claude-api-1-day-50m",
+    name: "Claude API - 1 Day - 50M Tokens",
+    category: "Claude API",
+    description: "50M tokens | 1 day | Full warranty | In stock - instant delivery",
+    price: 499,
+    type: "one-time",
+    allowQty: false,
+    active: true
+  },
+  {
+    id: "claude-api-1-day-10m",
+    name: "Claude API - 1 Day - 10M Tokens",
+    category: "Claude API",
+    description: "10M tokens | 1 day | Full warranty | In stock - instant delivery",
+    price: 699,
+    type: "one-time",
+    allowQty: false,
+    active: true
+  },
+  {
+    id: "claude-api-1-day-100m",
+    name: "Claude API - 1 Day - 100M Tokens",
+    category: "Claude API",
+    description: "100M tokens | 1 day | Full warranty | In stock - instant delivery",
+    price: 1699,
+    type: "one-time",
+    allowQty: false,
+    active: true
+  },
+  {
+    id: "claude-api-1-month-100-usd",
+    name: "Claude API - 1 Month - $100 Credits",
+    category: "Claude API",
+    description: "$100 advertised API credits | 1 month | Full warranty | In stock - instant delivery",
+    price: 799,
+    type: "one-time",
+    allowQty: false,
+    active: true
+  },
+  {
+    id: "claude-api-1-month-500-usd",
+    name: "Claude API - 1 Month - $500 Credits",
+    category: "Claude API",
+    description: "$500 advertised API credits | 1 month | Full warranty | In stock - instant delivery",
+    price: 1999,
+    type: "one-time",
+    allowQty: false,
+    active: true
+  },
   P("api-test","API Test","Development & Coding"),
   P("factory-pro","Factory Pro","Development & Coding"),
   P("firecrawl-credits","Firecrawl Credits","Development & Coding"),
