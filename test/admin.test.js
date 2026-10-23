@@ -49,7 +49,7 @@ test("password hashing: verifies, rejects wrong/tampered/malformed, enforces str
   assert.match(h, /^scrypt:32768:8:1:[\w-]+:[\w-]+$/); assert.ok(!h.includes("$"));
   assert.equal(await verifyPassword("a long enough passphrase", h), true);
   assert.equal(await verifyPassword("a long enough passphrasE", h), false);
-  for (const bad of ["", "plain", "scrypt:1:1:1:aa:bb", "scrypt:32768:8:1:x", h.replace(/.$/, "A")]) assert.equal(await verifyPassword("a long enough passphrase", bad), false);
+  for (const bad of ["", "plain", "scrypt:1:1:1:aa:bb", "scrypt:32768:8:1:x", h.slice(0, -1) + (h.endsWith("A") ? "B" : "A")]) assert.equal(await verifyPassword("a long enough passphrase", bad), false);
   assert.ok(passwordProblem("short")); assert.ok(passwordProblem("aaaaaaaaaaaaaaaa")); assert.ok(passwordProblem("password1234567")); assert.equal(passwordProblem(PASSWORD, EMAIL), null);
   assert.notEqual(await hashPassword("same"), await hashPassword("same"), "salted");
 });
