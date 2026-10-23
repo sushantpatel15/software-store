@@ -331,6 +331,11 @@ app.use((err, _req, res, next) => {
 
 (async () => {
   try {
+if (!store.sqliteMode) {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  await store.db.exec(fs.readFileSync(path.join(__dirname, "db/postgres-schema.sql"), "utf8"));
+}
     await adminStore.init(PRODUCTS);
 
     app.listen(PORT, () => {
