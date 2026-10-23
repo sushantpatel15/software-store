@@ -330,7 +330,19 @@ app.use((err, _req, res, next) => {
 });
 
 (async () => {
-  try { await adminStore.init(PRODUCTS); }
-  catch (err) { console.error("⚠️  Admin/catalog database init failed — admin disabled, using data/products.js:", err.message); }
-  app.listen(PORT, () => console.log(`✅ Store running at http://localhost:${PORT}  (${hasRazorpayKeys ? "Razorpay: configured" : "Razorpay: MOCK MODE"})`));
+  try {
+    await adminStore.init(PRODUCTS);
+
+    app.listen(PORT, () => {
+      console.log(
+        `Store running at http://localhost:${PORT} (${hasRazorpayKeys ? "Razorpay: configured" : "Razorpay: MOCK MODE"})`
+      );
+    });
+  } catch (err) {
+    console.error(
+      "Database initialization failed; server will not start:",
+      err.message
+    );
+    process.exitCode = 1;
+  }
 })();
