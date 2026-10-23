@@ -27,7 +27,7 @@ const freePort = () => new Promise((res) => { const s = net.createServer().liste
 async function startServer(env) {
   const port = await freePort();
   const child = spawn(process.execPath, ["server.js"], {
-    cwd: tmp, env: { PATH: process.env.PATH, PORT: String(port), BUSINESS_NAME: "Test Store", SUPPORT_EMAIL: "help@test.example", ...env },
+    cwd: tmp, env: { PATH: process.env.PATH, DB_PATH: path.join(tmp, "db", "store.db"), PORT: String(port), BUSINESS_NAME: "Test Store", SUPPORT_EMAIL: "help@test.example", ...env },
   });
   await new Promise((resolve, reject) => {
     child.stdout.on("data", (d) => String(d).includes("Store running") && resolve());
@@ -45,6 +45,7 @@ before(async () => {
   for (const f of ["server.js", "package.json"]) fs.copyFileSync(path.join(ROOT, f), path.join(tmp, f));
   fs.cpSync(path.join(ROOT, "db"), path.join(tmp, "db"), { recursive: true, filter: (s) => !s.endsWith(".db") && !s.includes(".db-") });
   fs.mkdirSync(path.join(tmp, "data")); fs.writeFileSync(path.join(tmp, "data", "products.js"), FIXTURE);
+  for (const d of ["src", "admin-ui"]) fs.cpSync(path.join(ROOT, d), path.join(tmp, d), { recursive: true });
   fs.symlinkSync(path.join(ROOT, "node_modules"), path.join(tmp, "node_modules"));
   ok = await startServer({ WHATSAPP_NUMBER: "+91 98765-43210" });
   noWa = await startServer({ WHATSAPP_NUMBER: "" });

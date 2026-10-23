@@ -17,8 +17,12 @@ const crypto = require("crypto");
 const path = require("path");
 const PRODUCTS = require("./data/products");
 const store = require("./db/database");
+const adminStore = require("./db/admin-store");
+const createAdminRouter = require("./src/admin-routes");
 
 const app = express();
+// On Render (behind a proxy) this makes req.ip / secure-cookie detection correct
+if (process.env.NODE_ENV === "production") app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3000;
 
 // --- Config (single place for business settings) ---
@@ -314,20 +318,12 @@ app.get("/api/orders/:id", (req, res) => {
   });
 });
 
-// ---------- Admin (local development only) ----------
-// Before a real launch: replace this with proper login/auth and put it behind HTTPS.
-app.get("/admin/orders", (req, res) => {
-  if (!process.env.ADMIN_TOKEN || req.query.token !== process.env.ADMIN_TOKEN) {
-    return res.status(401).send("Unauthorized. Open /admin/orders?token=YOUR_ADMIN_TOKEN (set in .env)");
-  }
-  const rows = store.listOrders().map((o) => `
-    <tr><td>${o.id}</td><td>${o.customer_name}<br><small>${o.email} · ${o.phone}</small></td>
-    <td>₹${o.total}</td><td>${o.status}</td><td>${new Date(o.created_at).toLocaleString("en-IN")}</td></tr>`).join("");
-  res.send(`<!doctype html><title>Orders — Admin</title>
-    <style>body{font-family:system-ui;padding:24px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px;text-align:left}</style>
-    <h1>Orders (latest 100)</h1><p>Local dev view only. Add real authentication before launch.</p>
-    <table><tr><th>Order</th><th>Customer</th><th>Total</th><th>Status</th><th>Created</th></tr>${rows || '<tr><td colspan="5">No orders yet.</td></tr>'}</table>`);
-});
+// ---------- Admin dashboard (email + password login) ----------
+// Products & availability are editable in the dashboard; PRODUCTS is refreshed in place so the storefront updates instantly.
+// If the database can't start, the storefront keeps running with the catalog in data/products.js.
+try { adminStore.init(PRODUCTS); }
+catch (err) { console.error("⚠️  Admin/catalog database init failed — admin disabled, using data/products.js:", err.message); }
+app.use("/admin", createAdminRouter({ catalog: PRODUCTS }));
 
 // Malformed JSON bodies get a clean JSON error instead of an HTML stack page
 app.use((err, _req, res, next) => {

@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>Admin sign in</title>
+<link rel="stylesheet" href="/admin/assets/admin.css"></head>
+<body class="login-page">
+<main class="login-card">
+  <h1>Admin sign in</h1>
+  <form id="login-form" novalidate>
+    <label>Email<input id="email" name="email" type="email" autocomplete="username" required maxlength="254" autofocus></label>
+    <label>Password<input id="password" name="password" type="password" autocomplete="current-password" required maxlength="200"></label>
+    <p id="error" class="error" role="alert" hidden></p>
+    <button class="btn block" id="submit" type="submit">Sign in</button>
+  </form>
+  <p class="muted small"><a href="/">← Back to store</a></p>
+</main>
+<script src="/admin/assets/login.js"></script>
+</body></html>
