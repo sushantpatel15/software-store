@@ -45,7 +45,7 @@ if (hasRazorpayKeys) {
 }
 
 // Webhook needs the RAW body to verify its signature, so register it BEFORE express.json()
-app.post("/api/webhooks/razorpay", express.raw({ type: "application/json" }), (req, res) => {
+app.post("/api/webhooks/razorpay", express.raw({ type: "application/json" }), async (req, res) => {
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
   if (!secret) return res.status(503).json({ error: "Webhook secret not configured" });
 
@@ -59,13 +59,13 @@ app.post("/api/webhooks/razorpay", express.raw({ type: "application/json" }), (r
   if (event.event === "payment.captured" || event.event === "order.paid") {
     const rzpOrderId = event.payload?.payment?.entity?.order_id || event.payload?.order?.entity?.id;
     const paymentId = event.payload?.payment?.entity?.id;
-    const order = rzpOrderId && store.getOrderByRazorpayId(rzpOrderId);
-    if (order && order.status !== "paid") store.updateOrderStatus(order.id, "paid", paymentId);
+    const order = rzpOrderId && await store.getOrderByRazorpayId(rzpOrderId);
+    if (order && order.status !== "paid") await store.updateOrderStatus(order.id, "paid", paymentId);
   }
   if (event.event === "payment.failed") {
     const rzpOrderId = event.payload?.payment?.entity?.order_id;
-    const order = rzpOrderId && store.getOrderByRazorpayId(rzpOrderId);
-    if (order && order.status === "pending") store.updateOrderStatus(order.id, "failed");
+    const order = rzpOrderId && await store.getOrderByRazorpayId(rzpOrderId);
+    if (order && order.status === "pending") await store.updateOrderStatus(order.id, "failed");
   }
   res.json({ ok: true });
 });
@@ -265,7 +265,7 @@ app.post("/api/orders", async (req, res) => {
       razorpayOrderId = rzpOrder.id;
     }
 
-    store.createOrder({
+    await store.createOrder({
       id: orderId, customer_name: name.trim(), email: email.trim(), phone: phone.trim(),
       items: JSON.stringify(checked.items), subtotal: checked.subtotal, total: checked.total,
       currency: "INR", status: "pending", razorpay_order_id: razorpayOrderId,
@@ -280,9 +280,9 @@ app.post("/api/orders", async (req, res) => {
 });
 
 // Verify a Razorpay checkout payment (official signature check)
-app.post("/api/payments/verify", (req, res) => {
+app.post("/api/payments/verify", async (req, res) => {
   const { orderId, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body || {};
-  const order = orderId && store.getOrder(orderId);
+  const order = orderId && await store.getOrder(orderId);
   if (!order) return res.status(404).json({ error: "Order not found." });
   if (!hasRazorpayKeys) return res.status(400).json({ error: "Payment gateway is not configured." });
 
@@ -294,22 +294,22 @@ app.post("/api/payments/verify", (req, res) => {
   const valid = razorpay_signature && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(razorpay_signature));
   if (!valid) return res.status(400).json({ error: "Payment verification failed. If money was deducted, contact support with your order reference." });
 
-  store.updateOrderStatus(orderId, "paid", razorpay_payment_id);
+  await store.updateOrderStatus(orderId, "paid", razorpay_payment_id);
   res.json({ ok: true, status: "paid" });
 });
 
 // MOCK ONLY: simulate a successful payment for local UI testing (disabled when real keys exist)
-app.post("/api/payments/mock-success", (req, res) => {
+app.post("/api/payments/mock-success", async (req, res) => {
   if (hasRazorpayKeys) return res.status(403).json({ error: "Mock mode is disabled when Razorpay is configured." });
-  const order = store.getOrder(req.body?.orderId);
+  const order = await store.getOrder(req.body?.orderId);
   if (!order) return res.status(404).json({ error: "Order not found." });
-  store.updateOrderStatus(order.id, "paid", "pay_MOCK_test");
+  await store.updateOrderStatus(order.id, "paid", "pay_MOCK_test");
   res.json({ ok: true, status: "paid" });
 });
 
 // Order status (confirmation page polls this)
-app.get("/api/orders/:id", (req, res) => {
-  const order = store.getOrder(req.params.id);
+app.get("/api/orders/:id", async (req, res) => {
+  const order = await store.getOrder(req.params.id);
   if (!order) return res.status(404).json({ error: "Order not found." });
   res.json({
     id: order.id, status: order.status, total: order.total, currency: order.currency,
@@ -321,8 +321,6 @@ app.get("/api/orders/:id", (req, res) => {
 // ---------- Admin dashboard (email + password login) ----------
 // Products & availability are editable in the dashboard; PRODUCTS is refreshed in place so the storefront updates instantly.
 // If the database can't start, the storefront keeps running with the catalog in data/products.js.
-try { adminStore.init(PRODUCTS); }
-catch (err) { console.error("⚠️  Admin/catalog database init failed — admin disabled, using data/products.js:", err.message); }
 app.use("/admin", createAdminRouter({ catalog: PRODUCTS }));
 
 // Malformed JSON bodies get a clean JSON error instead of an HTML stack page
@@ -331,4 +329,25 @@ app.use((err, _req, res, next) => {
   next(err);
 });
 
-app.listen(PORT, () => console.log(`✅ Store running at http://localhost:${PORT}  (${hasRazorpayKeys ? "Razorpay: configured" : "Razorpay: MOCK MODE"})`));
+(async () => {
+  try {
+if (!store.sqliteMode) {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  await store.db.exec(fs.readFileSync(path.join(__dirname, "db/postgres-schema.sql"), "utf8"));
+}
+    await adminStore.init(PRODUCTS);
+
+    app.listen(PORT, () => {
+      console.log(
+        `Store running at http://localhost:${PORT} (${hasRazorpayKeys ? "Razorpay: configured" : "Razorpay: MOCK MODE"})`
+      );
+    });
+  } catch (err) {
+    console.error(
+      "Database initialization failed; server will not start:",
+      err.message
+    );
+    process.exitCode = 1;
+  }
+})();

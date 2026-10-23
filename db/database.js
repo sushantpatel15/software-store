@@ -1,36 +1,19 @@
-/**
- * SQLite setup using Node's built-in node:sqlite (Node 22+).
- * Why built-in? No native package to compile — `npm install` stays simple.
- * DB file is auto-created at db/store.db on first run.
- * We NEVER store card numbers, UPI PINs, or payment credentials here.
- */
-const path = require("path");
-let DatabaseSync;
-try { ({ DatabaseSync } = require("node:sqlite")); }
-catch { throw new Error("node:sqlite not found. Please use Node.js 22 or newer (check: node --version)."); }
-
-const db = new DatabaseSync(process.env.DB_PATH || path.join(__dirname, "store.db")) // set DB_PATH to a persistent disk path on Render;
-db.exec("PRAGMA journal_mode = WAL;");
-db.exec(`
-  CREATE TABLE IF NOT EXISTS orders (
-    id TEXT PRIMARY KEY, customer_name TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL,
-    items TEXT NOT NULL, subtotal INTEGER NOT NULL, total INTEGER NOT NULL,
-    currency TEXT NOT NULL DEFAULT 'INR', status TEXT NOT NULL DEFAULT 'pending',
-    razorpay_order_id TEXT, razorpay_payment_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-  );`);
-
-function createOrder(o) {
-  db.prepare(`INSERT INTO orders (id,customer_name,email,phone,items,subtotal,total,currency,status,razorpay_order_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(o.id, o.customer_name, o.email, o.phone, o.items, o.subtotal, o.total, o.currency, o.status, o.razorpay_order_id, o.created_at, o.updated_at);
-  return o;
+const sqliteMode = process.env.MIGRATION_TEST_MODE !== "1" && !process.env.DATABASE_URL;
+let db;
+if (sqliteMode) {
+  let DatabaseSync;
+  try { ({ DatabaseSync } = require("node:sqlite")); } catch { throw new Error("node:sqlite not found. Please use Node.js 22 or newer."); }
+  const path = require("path");
+const sqlite = new DatabaseSync(process.env.DB_PATH || path.join(__dirname, "store.db"));
+  sqlite.exec("PRAGMA journal_mode = WAL;");
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS orders (id TEXT PRIMARY KEY, customer_name TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, items TEXT NOT NULL, subtotal INTEGER NOT NULL, total INTEGER NOT NULL, currency TEXT NOT NULL DEFAULT 'INR', status TEXT NOT NULL DEFAULT 'pending', razorpay_order_id TEXT, razorpay_payment_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);`);
+  db = { async query(text, params=[]) { const values=[]; const sql=text.replace(/\$(\d+)/g,(_m,n)=>{values.push(params[Number(n)-1]);return "?";}); if(/^\s*(SELECT|WITH|PRAGMA)/i.test(sql)){const rows=sqlite.prepare(sql).all(...values);return{rows,rowCount:rows.length};} const result=sqlite.prepare(sql).run(...values);return{rows:[],rowCount:result.changes}; }, async exec(text){sqlite.exec(text);} };
+} else {
+  db = require("./postgres");
 }
-const getOrder = (id) => db.prepare("SELECT * FROM orders WHERE id=?").get(id);
-const getOrderByRazorpayId = (rid) => db.prepare("SELECT * FROM orders WHERE razorpay_order_id=?").get(rid);
-function updateOrderStatus(id, status, paymentId = null) {
-  const now = new Date().toISOString();
-  if (paymentId) db.prepare("UPDATE orders SET status=?, razorpay_payment_id=?, updated_at=? WHERE id=?").run(status, paymentId, now, id);
-  else db.prepare("UPDATE orders SET status=?, updated_at=? WHERE id=?").run(status, now, id);
-  return getOrder(id);
-}
-const listOrders = (limit = 100) => db.prepare("SELECT * FROM orders ORDER BY created_at DESC LIMIT ?").all(limit);
-module.exports = { db, createOrder, getOrder, getOrderByRazorpayId, updateOrderStatus, listOrders };
+async function createOrder(o) { await db.query(`INSERT INTO orders (id,customer_name,email,phone,items,subtotal,total,currency,status,razorpay_order_id,razorpay_payment_id,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,[o.id,o.customer_name,o.email,o.phone,o.items,o.subtotal,o.total,o.currency,o.status,o.razorpay_order_id||null,o.razorpay_payment_id||null,o.created_at,o.updated_at]);return o; }
+async function getOrder(id){const{rows}=await db.query("SELECT * FROM orders WHERE id=$1",[id]);return rows[0]||null;}
+async function getOrderByRazorpayId(id){const{rows}=await db.query("SELECT * FROM orders WHERE razorpay_order_id=$1",[id]);return rows[0]||null;}
+async function updateOrderStatus(id,status,paymentId=null){const now=new Date().toISOString();if(paymentId)await db.query("UPDATE orders SET status=$1,razorpay_payment_id=$2,updated_at=$3 WHERE id=$4",[status,paymentId,now,id]);else await db.query("UPDATE orders SET status=$1,updated_at=$2 WHERE id=$3",[status,now,id]);return getOrder(id);}
+async function listOrders(limit=100){return(await db.query("SELECT * FROM orders ORDER BY created_at DESC LIMIT $1",[limit])).rows;}
+module.exports={db,sqliteMode,createOrder,getOrder,getOrderByRazorpayId,updateOrderStatus,listOrders};

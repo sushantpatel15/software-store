@@ -10,3 +10,10 @@ npm-debug.log*
 *.db-shm
 *.sqlite-shm
 *.sqlite-wal
+
+.env.save
+
+# Local database backups and migration snapshots
+/backups/neon-migration/
+*.db.backup-*
+/scripts/init-neon-test.js.save
