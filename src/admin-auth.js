@@ -28,41 +28,43 @@ function parseCookies(header) {
 }
 const cookieFlags = (req) => `Path=/admin; HttpOnly; SameSite=Strict${isProd() || req.secure ? "; Secure" : ""}`;
 
-function startSession(req, res, admin) {
+async function startSession(req, res, admin) {
   const token = crypto.randomBytes(32).toString("base64url");
   const csrf = crypto.randomBytes(24).toString("base64url");
-  store.createSession({ tokenHash: sha256(token), adminId: admin.id, csrf, expiresAt: new Date(Date.now() + ABSOLUTE_MS).toISOString(), ip: req.ip, userAgent: req.get("user-agent") });
+  await store.createSession({ tokenHash: sha256(token), adminId: admin.id, csrf, expiresAt: new Date(Date.now() + ABSOLUTE_MS).toISOString(), ip: req.ip, userAgent: req.get("user-agent") });
   res.append("Set-Cookie", `${COOKIE}=${token}; ${cookieFlags(req)}; Max-Age=${ABSOLUTE_MS / 1000}`);
   return csrf;
 }
-function endSession(req, res) {
+async function endSession(req, res) {
   const token = parseCookies(req.headers.cookie)[COOKIE];
-  if (token) store.deleteSession(sha256(token));
+  if (token) await store.deleteSession(sha256(token));
   res.append("Set-Cookie", `${COOKIE}=; ${cookieFlags(req)}; Max-Age=0`);
 }
 /** Returns {id, email, csrf, tokenHash} for a valid, unexpired session, else null. */
-function currentSession(req) {
+async function currentSession(req) {
   const token = parseCookies(req.headers.cookie)[COOKIE];
   if (!token || token.length > 200) return null;
   const tokenHash = sha256(token);
-  const s = store.getSession(tokenHash);
+  const s = await store.getSession(tokenHash);
   if (!s) return null;
   const now = Date.now();
-  if (Date.parse(s.expires_at) < now || Date.parse(s.last_seen_at) < now - IDLE_MS) { store.deleteSession(tokenHash); return null; }
-  if (Date.parse(s.last_seen_at) < now - 60 * 1000) store.touchSession(tokenHash); // refresh at most once a minute
+  if (Date.parse(s.expires_at) < now || Date.parse(s.last_seen_at) < now - IDLE_MS) { await store.deleteSession(tokenHash); return null; }
+  if (Date.parse(s.last_seen_at) < now - 60 * 1000) await store.touchSession(tokenHash); // refresh at most once a minute
   return { id: s.admin_id, email: s.email, csrf: s.csrf_token, tokenHash };
 }
 
 // ---- middleware ----
 function requireSession(req, res, next) {
-  const s = currentSession(req);
+  currentSession(req).then((s) => {
   if (!s) return res.status(401).json({ error: "Please sign in." });
   req.admin = s; next();
+  }).catch(next);
 }
 function requireSessionPage(req, res, next) {
-  const s = currentSession(req);
+  currentSession(req).then((s) => {
   if (!s) return res.redirect("/admin/login");
   req.admin = s; next();
+  }).catch(next);
 }
 /** Same-origin + CSRF-token check for anything that changes data. */
 function sameOrigin(req) {

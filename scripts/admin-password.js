@@ -33,7 +33,12 @@ function ask(question, hidden) {
   const hash = await hashPassword(pw);
   if (process.argv.includes("--save")) {
     require("dotenv").config();
-    const s = require("../db/admin-store"); s.initSchema(); console.log(`\nSaved to local database (${s.upsertAdmin(email, hash)}).`);
+    // This option is explicitly local: never route a password update to DATABASE_URL.
+    process.env.DB_PATH ||= require("path").join(__dirname, "..", "db", "store.db");
+    const s = require("../db/admin-store");
+    await s.initSchema();
+    const result = await s.upsertAdmin(email, hash);
+    console.log(`\nSaved to local database (${result}).`);
   }
   console.log("\nAdd these two lines to your .env (and to Render → Environment):\n");
   console.log(`ADMIN_EMAIL=${email}`);

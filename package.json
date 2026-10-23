@@ -1,1 +1,30 @@
-{"dependencies":{"dotenv":"^16.4.5","express":"^4.21.2","pg":"^8.23.1","razorpay":"^2.9.4"},"description":"Simple software products & subscriptions store — HTML/CSS/Vanilla JS + Express + SQLite + Razorpay (UPI)","engines":{"node":">=22"},"keywords":["store","razorpay","express","sqlite"],"license":"MIT","main":"server.js","name":"software-store","scripts":{"dev":"node --watch server.js","start":"node server.js","test":"node --test \"test/*.test.js\"","admin:password":"node scripts/admin-password.js"},"type":"commonjs","version":"1.0.0"}
+{
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "pg": "^8.23.1",
+    "razorpay": "^2.9.4"
+  },
+  "description": "Simple software products & subscriptions store — HTML/CSS/Vanilla JS + Express + SQLite + Razorpay (UPI)",
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "store",
+    "razorpay",
+    "express",
+    "sqlite"
+  ],
+  "license": "MIT",
+  "main": "server.js",
+  "name": "software-store",
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js",
+    "test": "node --test test/admin.test.js test/enquiry.test.js",
+    "admin:password": "node scripts/admin-password.js",
+    "test:neon": "MIGRATION_TEST_MODE=1 node --test test/neon.integration.test.js"
+  },
+  "type": "commonjs",
+  "version": "1.0.0"
+}
