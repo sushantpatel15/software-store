@@ -9,7 +9,7 @@ let DatabaseSync;
 try { ({ DatabaseSync } = require("node:sqlite")); }
 catch { throw new Error("node:sqlite not found. Please use Node.js 22 or newer (check: node --version)."); }
 
-const db = new DatabaseSync(path.join(__dirname, "store.db"));
+const db = new DatabaseSync(process.env.DB_PATH || path.join(__dirname, "store.db")) // set DB_PATH to a persistent disk path on Render;
 db.exec("PRAGMA journal_mode = WAL;");
 db.exec(`
   CREATE TABLE IF NOT EXISTS orders (

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>Admin dashboard</title>
+<link rel="stylesheet" href="/admin/assets/admin.css"></head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="bar">
+  <strong>Store admin</strong><span id="who" class="muted"></span>
+  <span class="spacer"></span><a href="/" target="_blank" rel="noopener">View store</a>
+  <button id="logout" class="btn secondary small" type="button">Sign out</button>
+</header>
+<div class="tabs" role="tablist" aria-label="Admin sections">
+  <button role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true">Overview</button>
+  <button role="tab" id="tab-products" aria-controls="panel-products" aria-selected="false" tabindex="-1">Products &amp; prices</button>
+  <button role="tab" id="tab-orders" aria-controls="panel-orders" aria-selected="false" tabindex="-1">Orders</button>
+  <button role="tab" id="tab-activity" aria-controls="panel-activity" aria-selected="false" tabindex="-1">Activity</button>
+</div>
+<main id="main" class="wrap">
+  <p id="notice" class="alert" role="status" hidden></p>
+
+  <section id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
+    <h1>Overview</h1><div id="cards" class="cards"></div>
+    <p class="muted small">Customers order through WhatsApp enquiries, which are not stored here. The Orders tab shows orders saved by the store's payment flow.</p>
+  </section>
+
+  <section id="panel-products" role="tabpanel" aria-labelledby="tab-products" hidden>
+    <h1>Products &amp; prices</h1>
+    <div class="toolbar">
+      <label>Search<input id="p-search" type="search" placeholder="Name, ID or category"></label>
+      <label>Show<select id="p-filter"><option value="all">All products</option><option value="active">Available</option><option value="hidden">Hidden</option><option value="request">Price on request</option></select></label>
+      <button id="p-add" class="btn" type="button">Add product</button>
+    </div>
+    <p id="p-count" class="muted" role="status"></p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Product</th><th>Category</th><th>Price (₹)</th><th>Available</th><th>Actions</th></tr></thead>
+      <tbody id="p-body"></tbody></table></div>
+    <p class="muted small">Price 0 means “Price on request”. Hidden products disappear from the store and can't be ordered. Changes apply to the store immediately.</p>
+  </section>
+
+  <section id="panel-orders" role="tabpanel" aria-labelledby="tab-orders" hidden>
+    <h1>Orders</h1>
+    <div class="toolbar">
+      <label>Search<input id="o-search" type="search" placeholder="Order ID, name, email or phone"></label>
+      <label>Status<select id="o-filter"><option value="">All</option><option>pending</option><option>paid</option><option>failed</option><option>cancelled</option></select></label>
+    </div>
+    <p id="o-count" class="muted" role="status"></p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Order</th><th>Customer</th><th>Total</th><th>Status</th><th>Date</th><th></th></tr></thead>
+      <tbody id="o-body"></tbody></table></div>
+    <div class="pager"><button id="o-prev" class="btn secondary small" type="button">Previous</button><button id="o-next" class="btn secondary small" type="button">Next</button></div>
+  </section>
+
+  <section id="panel-activity" role="tabpanel" aria-labelledby="tab-activity" hidden>
+    <h1>Recent admin activity</h1>
+    <div class="table-wrap"><table>
+      <thead><tr><th>When</th><th>Admin</th><th>Action</th><th>Target</th><th>Details</th></tr></thead>
+      <tbody id="a-body"></tbody></table></div>
+  </section>
+</main>
+
+<dialog id="p-dialog" aria-labelledby="pd-title">
+  <form id="p-form" novalidate>
+    <h2 id="pd-title">Product</h2>
+    <label>ID<input id="pf-id" maxlength="80" autocomplete="off" placeholder="e.g. my-product"><span class="field-error" id="pe-id"></span></label>
+    <label>Name<input id="pf-name" maxlength="120"><span class="field-error" id="pe-name"></span></label>
+    <label>Category<input id="pf-category" maxlength="60" list="cat-list"><datalist id="cat-list"></datalist><span class="field-error" id="pe-category"></span></label>
+    <label>Description<textarea id="pf-description" rows="3" maxlength="500"></textarea><span class="field-error" id="pe-description"></span></label>
+    <label>Price (₹, whole rupees; 0 = price on request)<input id="pf-price" type="number" min="0" step="1" value="0"><span class="field-error" id="pe-price"></span></label>
+    <label>Type<select id="pf-type"><option value="subscription">Subscription</option><option value="one-time">One-time purchase</option></select></label>
+    <label>Billing period<select id="pf-period"><option value="">Not specified</option><option value="month">Month</option><option value="year">Year</option></select></label>
+    <label class="check"><input id="pf-allowQty" type="checkbox"> Customers may order more than 1</label>
+    <label class="check"><input id="pf-active" type="checkbox" checked> Available in the store</label>
+    <p id="pf-error" class="error" role="alert" hidden></p>
+    <div class="actions"><button class="btn" id="pf-save" type="submit">Save product</button><button class="btn secondary" id="pf-cancel" type="button">Cancel</button></div>
+  </form>
+</dialog>
+
+<dialog id="o-dialog" aria-labelledby="od-title">
+  <h2 id="od-title">Order</h2>
+  <div id="od-body"></div>
+  <div class="actions"><button class="btn secondary" id="od-close" type="button">Close</button></div>
+</dialog>
+<script src="/admin/assets/dashboard.js"></script>
+</body></html>

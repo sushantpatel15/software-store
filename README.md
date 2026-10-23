@@ -28,7 +28,7 @@ Run the automated tests with `npm test`.
 
 ## 2. Edit products & prices ★
 
-**Edit only this file: `data/products.js`**
+**Easiest: sign in to the admin dashboard (section 8) and edit products, prices and availability there.** `data/products.js` is the *starting* catalog: it seeds the database once, and later only adds products whose ID isn't in the database yet.
 
 - All 50 products from your list are already there, grouped by category.
 - Prices are `0` right now because no prices were provided. `price: 0` = shows **"Price on request"** (can still be added to the cart; you quote it manually).
@@ -69,13 +69,17 @@ RAZORPAY_WEBHOOK_SECRET=your_webhook_secret_here
 ## 5. Orders & admin (local dev)
 
 - DB file: `db/store.db` (auto-created; orders table: id, customer, items JSON, subtotal/total INR, status, Razorpay IDs, timestamps).
-- Review orders: http://localhost:3000/admin/orders?token=YOUR_ADMIN_TOKEN (token from `.env`).
+- Review/manage orders in the admin dashboard: http://localhost:3000/admin (see section 8). The old `?token=` page was removed.
 
 ## 6. Project structure
 
 ```
-data/products.js    ★ products & prices (single source of truth)
+data/products.js    starting catalog (seeds the database once; after that edit products in /admin)
 db/database.js      SQLite setup & order helpers
+db/admin-store.js   ALL admin database code (admins, sessions, audit log, editable products)
+src/admin-*.js      admin login/session/CSRF logic and API routes; src/password.js = password hashing
+admin-ui/           admin login + dashboard pages (served only through /admin)
+scripts/            admin-password.js (creates your password hash)
 server.js           Express API, Razorpay verify + webhook, admin
 public/             index, checkout, confirmation, terms/privacy/refund, css/, js/ (cart in localStorage)
 .env.example        copy to .env — placeholders only
@@ -85,11 +89,55 @@ public/             index, checkout, confirmation, terms/privacy/refund, css/, j
 
 - [ ] Replace template Terms / Privacy / Refund pages with real, reviewed policies
 - [ ] Switch to Razorpay **live** keys, complete KYC, test a real low-value order + refund
-- [ ] Replace token-in-URL admin with proper login/auth; serve everything over **HTTPS**
-- [ ] Set a strong `ADMIN_TOKEN`, keep `.env` out of Git, back up `db/store.db`
+- [x] Admin now uses email + password login (section 8). Still serve everything over **HTTPS** and set `NODE_ENV=production`
+- [ ] Use a strong admin password, keep `.env` out of Git, back up the database (and put it on a persistent disk — see section 8)
 - [ ] Consider a hosted DB (Postgres etc.) if traffic grows; SQLite is for starting out
 - [ ] Confirm you are authorised to resell each subscription and comply with each provider's resale terms
 - [ ] Add order emails / delivery automation for licences & activation
+
+## 8. Admin dashboard (email + password) ★
+
+**What it does:** sign in at `/admin` to manage **products, prices, availability and orders**. Price and availability changes appear on the storefront immediately. Every change is written to an activity log.
+
+### Set it up (one time)
+1. `npm run admin:password` — type your email and a strong password (min 12 characters). It never shows or saves the password; it prints two lines.
+2. Paste those two lines (`ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`) into `.env` locally **and** into Render → Environment. Also set `NODE_ENV=production` on Render.
+3. Restart, open `/admin`, sign in. To change the password later, run the script again and replace `ADMIN_PASSWORD_HASH`.
+
+There are **no default credentials**. If the two variables are missing, nobody can sign in.
+
+### How products work now
+- On first start, the products in `data/products.js` are copied into the database **once** (existing rows are never overwritten).
+- After that, **edit products in the dashboard**. Editing `data/products.js` only adds products whose ID isn't in the database yet.
+- Products can be hidden (`Available` off) but not deleted, so old orders still make sense. Price `0` = "Price on request".
+- If the database can't start, the storefront keeps running using `data/products.js` and the admin is disabled (check the logs).
+
+### Security design
+- Passwords: scrypt hash with per-password salt; compared in constant time; an unknown email takes the same time as a wrong password and gets the same message.
+- Sessions: random 256-bit token in an `HttpOnly`, `SameSite=Strict`, `Secure` (production) cookie; only its SHA-256 is stored. Expire after 30 min idle / 8 h total; new token every login; logout ends it server-side.
+- CSRF: every change needs a per-session token header **and** a same-origin check.
+- Brute force: 5 wrong passwords per email and 20 per IP per 15 minutes → HTTP 429 (kept in memory, resets on restart).
+- Headers on admin pages: strict Content-Security-Policy (no inline scripts), no-store, no framing, no referrer.
+- The dashboard builds pages with `textContent`, so customer-supplied text (names etc.) can never run as code.
+- The activity log never contains passwords, tokens or payment data.
+
+### ⚠ Persistence (important on Render)
+SQLite is a file. On Render's free/ephemeral disk it is **wiped on every deploy**, so product edits and orders would be lost. Either attach a **Render Disk** and set `DB_PATH=/var/data/store.db`, or move to Neon/Postgres (below). Your admin login itself survives because it comes from environment variables.
+
+### Moving to Neon / Postgres later
+The existing Neon connection isn't part of this codebase (it uses `node:sqlite`), so nothing here touches it. All admin database code is in **`db/admin-store.js`** and the customer/order code in **`db/database.js`**; switching means re-implementing those two files with the `pg` package and a `DATABASE_URL` (Neon needs `?sslmode=require`) — the routes, UI and tests don't change. Tables to create (Postgres):
+```sql
+CREATE TABLE IF NOT EXISTS admin_users (id SERIAL PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), last_login_at TIMESTAMPTZ);
+CREATE TABLE IF NOT EXISTS admin_sessions (token_hash TEXT PRIMARY KEY, admin_id INT NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE, csrf_token TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(), expires_at TIMESTAMPTZ NOT NULL, ip TEXT, user_agent TEXT);
+CREATE TABLE IF NOT EXISTS admin_audit (id SERIAL PRIMARY KEY, admin_id INT, admin_email TEXT, action TEXT NOT NULL, target TEXT, detail TEXT, ip TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS products (id TEXT PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', price INT NOT NULL DEFAULT 0, type TEXT NOT NULL DEFAULT 'subscription', period TEXT, allow_qty BOOLEAN NOT NULL DEFAULT false, active BOOLEAN NOT NULL DEFAULT true, sort_order INT NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now());
+```
+Never run `DROP`/`TRUNCATE` on `orders` when migrating; copy rows across instead. If you want help fixing the Neon connection itself, share the exact error message (without the password) and the file that connects to it.
+
+### Not included yet
+Password change from inside the dashboard, multiple admin roles, two-factor sign-in, and a shared (multi-server) login throttle. For a single Render instance, none are required to be safe.
+
+Run all tests with `npm test`.
 
 ## Deployment guidance
 
